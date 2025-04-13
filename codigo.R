@@ -1,349 +1,206 @@
-##Código del informe "Textual Analysis in R:
-##Patrons of Agricultural News in Italy in First Half of 2024""
-#2 de Julio del 2024
-#Henry Sebastián Rangel y Luisa Fernanda Arenas.
-############ alternativa
-library("NLP")
-library("tm")
-library("SnowballC")
-library("wordcloud")
-library("RColorBrewer")
-library("syuzhet")
-library("ggplot2")
-rm(list=ls())
+##Código del articulo Coyuntura de la agricultura en Italia: Metodología para un análisis textual en medios digitales
+#Abril del 2025
+#Henry Sebastián Rangel 
+#Luisa Fernanda Arenas.
+#####
+## 1.Lectura y creacion del data frame (DF)
 library(readxl)
-PL <- read_excel("C:/Users/Sebastián Rangel/OneDrive - Universidad Santo Tomás Bucaramanga/Escritorio/Proyecto política agraria/Agro_periodicos1.xlsx", 
+DF <- read_excel("Direccion", 
                  col_types = c("text", "text", "date", 
                                "text", "text", "text"))
 
-colnames(PL)=c("Fuente","Título", "Fecha", "Texto",  "Link", "Ecuacion" )
-attach(PL)
+colnames(DF)=c("Fuente","Título", "Fecha", "Texto",  "Link", "Ecuacion" )
+attach(DF)
 
-###revisar quitar los apostrofe y los numeros
-PL$Texto=gsub(pattern ="\\’", replacement = " ", PL$Texto)
-PL$Texto=gsub("[^[:alpha:] ]","",PL$Texto)
-PL$Texto <- gsub("[Èàèìòùé]", "", PL$Texto)
-PL$Texto[19]
-###creando la variable mes y organizandolo, también puede usarse mutate parta ordenar las columnas
-PL$ID=(1:length(Fecha))
-PL$Mes=months(Fecha, abbreviate=TRUE)
-PL=PL[, c(7,1,2,8,3,4,5,6)]
+DF$ID=(1:length(Fecha)) #Se crea un ID basado en la columna fecha
+DF$Mes=months(Fecha, abbreviate=TRUE) # se crea nueva columna con el nombre del mes
 
-###syntax with grep Regular expression
-### https://regexone.com/lesson/matching_characters
-###extraer noticias con un patrón
-grep(pattern = "trattori", x = PL$Texto, value = TRUE)
-grep(pattern = "aprileogn", x = PL$Texto, value = TRUE)
-library(tidyverse)
-library(tidytext)
+#####
+## 2.Limpieza de los datos
+library("dplyr")
 library("tm")
+library("tidytext")
+library("SnowballC")
 
-##Toquenizando por fraces y por palabras filtrando por periodico o 
-### por mes
-PL=PL%>%arrange((Fecha))
-PL%>%
-  unnest_tokens(output = "sentences", input = Texto,
-                token ="regex", pattern = "trattori") %>%
-  count(Mes)
+#Identificar duplicados 
+duplicados <- DF[duplicated(DF[c("Fuente", "Texto", "Fecha")]), ] #duplicado con igual fuente, texto y fecha
+DF <- DF[!duplicated(DF[c("Fuente", "Texto")]), ] #Eliminacion de duplicados 
 
+DF$Texto[19] #Ejemplo del articulo
+#Eliminación de caracteres no deseados (Regex)
+DF$Texto=gsub(pattern ="\\’", replacement = " ", DF$Texto) #Reemplaza apóstrofes por espacio
+DF$Texto=gsub("[^[:alpha:] ]","",DF$Texto) #Elimina cualquier símbolo que no sea letra
+DF$Texto <- gsub("[Èàèìòùé]", "", DF$Texto) #Elimina acentos italianos  
 
-## limpieza de stop words en italiano
-italian=data.frame(stopwords("italian"))
+# Eliminacion de Stopwords en italiano
+italian=data.frame(stopwords("italian")) # Cargar lista de stopwords en italiano
 colnames(italian)=c("word")
 
-###personalizar stop words agregar nuevas
-custom <- add_row(italian, word ="ue")
-custom <- add_row(custom, word ="pi")
-custom <- add_row(custom, word ="de")
-custom <- add_row(custom, word ="d")
-custom <- add_row(custom, word ="dopo")
-custom <- add_row(custom, word ="gi")
-custom <- add_row(custom, word ="due")
-custom <- add_row(custom, word ="solo")
-custom <- add_row(custom, word ="essere")
-custom <- add_row(custom, word ="sempre")
-custom <- add_row(custom, word ="oggi")
-custom <- add_row(custom, word ="mila")
-custom <- add_row(custom, word ="cos")
-### Pruebas 
-#PL%>% unnest_tokens(word,Texto)%>% anti_join(italian)%>%
-  #count(word, sort=T)
+custom_stopwords <- italian %>% # Agregar palabras personalizadas
+  add_row(word = "ue") %>%
+  add_row(word = "pi") %>%
+  add_row(word = "de") %>%
+  add_row(word = "d") %>%
+  add_row(word = "dopo") %>%
+  add_row(word = "gi") %>%
+  add_row(word = "due") %>%
+  add_row(word = "solo") %>%
+  add_row(word = "essere") %>%
+  add_row(word = "sempre") %>%
+  add_row(word = "oggi") %>%
+  add_row(word = "mila") %>%
+  add_row(word = "anni") %>%
+  add_row(word = "fa") %>%
+  add_row(word = "pu") %>%
+  add_row(word = "cos") %>%
+  add_row(word = "agricola") %>%
+  add_row(word = "agricole") %>%
+  add_row(word = "agricolo") %>%
+  add_row(word = "agricoltori") %>%
+  add_row(word = "agricoltura") %>%
+  add_row(word = "italia")  # Continuar con otras palabras si es necesario
 
-#PL%>% unnest_tokens(word,Texto)%>% anti_join(custom)%>%
-  #count(word, sort=T)
-###stemmed (extraer raices)
+DF_SS <- DF %>% unnest_tokens(word, Texto) %>% #Eliminación de stopwords del texto
+  anti_join(custom_stopwords, by = "word") 
 
-###
+Ejemplo <- DF_SS %>% filter(ID == 19) #Ejemplo del articulo
+parrafo <- Ejemplo %>% pull(word) %>% paste(collapse = " ")
+print(parrafo)
 
-PL_NSTOP=PL%>% unnest_tokens(word,Texto)%>% anti_join(custom)
-
-stemmmed <-  PL_NSTOP%>%
+# Aplicar stemming en italiano
+DF_stemmed <- DF_SS %>%
   mutate(word = wordStem(word, language = "italian"))
-t=stemmmed%>%
-  count(word, sort=T)
-print(t,n=50)
+
+# vector de elementos unicos (revisar si se incluye)
+unicos1=DF_stemmed%>%count(word, sort=T)
+unicos2=DF_SS%>%count(word, sort=T) 
+
+#####
+## 3. Descripcion de los datos
+library(wordcloud)
+
+noticias_por_mes <- DF %>%count(Mes)
+noticias_por_mes <- noticias_por_mes %>% mutate(porcentaje = n / sum(n) * 100)
+noticias_por_mes
+
+DF <- DF %>% arrange(Fecha)
+
+noticias_por_fuente <- DF %>%count(Fuente)
+noticias_por_fuente <- noticias_por_fuente %>% mutate(porcentaje = n / sum(n) * 100)
+noticias_por_fuente
+
+frecuencia=DF_SS%>%count(word, sort=T)
+palette_size <- min(length(frecuencia$word), 9)
 set.seed(1234)
-wordcloud(words = t$word, freq = t$n, min.freq = 5,
-          max.words=100, random.order=F, rot.per=0.2, 
-          colors=brewer.pal(8, "Dark2"))
-library(wordcloud2)
-set.seed(1234)
-wordcloud2(data=t, size=1, color='random-dark', shape = 'pentagon')
-##final data set
+windows(width = 60, height = 30)
+wordcloud(words = frecuencia$word,
+          freq = frecuencia$n,
+          min.freq = 10,
+          max.words = 200,
+          random.order = FALSE,
+          rot.per = 0.2,
+          scale = c(3, 0.5),
+          colors = brewer.pal(palette_size, "YlOrRd"))
 
-stemmmed
+palabras <- DF_stemmed%>%count(Fuente, word, sort=T)
+Fuentes_con_protesta <- palabras %>% filter(word == "protest")
+Fuentes_con_protesta
 
-##################################################clasificación por Fuente
-# Count occurrence by article_id and word
+palabras <- DF_stemmed%>%count(Fuente, word, sort=T)
+Fuentes_con_tractor <- palabras %>% filter(word == "trattor")
+Fuentes_con_tractor
 
-words <- stemmmed%>%
-  count(Fuente, word, sort=T)
-stemmmed%>%
-  count( word, sort=T)
-
-
-# How many different word/article combinations are there?
-unique_combinations <- nrow(words)
-table(PL$Fuente)
-# Filter to responses with the word "protest"
-words_with <- words %>%
-  filter(word == "protest")
-words_with
-# How many articles had the word "pprotest"?
-number_articles <- nrow(words_with)
-number_articles
-####trattor
-words_with <- words %>%
-  filter(word == "trattor")
-words_with
-
-words_with <- words %>%
-  filter(word == "bruxelles")
-words_with
-# How many articles had the word "pprotest"?
-number_articles <- nrow(words_with)
-number_articles
-##########clasificación por mes
-
-words_mes <- stemmmed%>%
-  count(Mes, word, sort=T)
-stemmmed%>%
-  count( word, sort=T)
-#########similaridad de noticias
-# How many different word/article combinations are there?
-unique_combinations <- nrow(words_mes)
-table(PL$Mes)
-# Filter to responses with the word "protest"
-words_with <- words_mes %>%
-  filter(word == "protest")
-words_with
-####trattor
-words_with <- words_mes %>%
-  filter(word == "trattor")
-words_with
-
-words_with <- words_mes %>%
-  filter(word == "bruxelles")
-words_with
-####Create a tibble with TFIDF values 
-
-##Sin stop word pero la palabra completa
-TFIDF=PL_NSTOP%>%
-  count(ID, word, sort=T)%>% bind_tf_idf(word, ID, n)
-##organizar de menor a mayor
-
-TFIDF%>%
-  arrange(desc(tf_idf))
-
-# Calculate the cosine similarity by chapter, using words
+#####
+## 4. Medida de similitud de noticias
 library(widyr)
 library(xtable)
-comparisons <- TFIDF %>%
-  pairwise_similarity(ID,word , n) %>%
-  arrange(desc( similarity))
 
-print(xtable(head(comparisons,10)), type = "latex", file = "output.tex")
-comparisons <- TFIDF %>%
-  pairwise_similarity(ID,word , tf_idf) %>%
-  arrange(desc( similarity))
-##eliminadas por ser ls mismas noticias
-PL= PL[-c(140,139),]
-#############################clasificacion
-# Stem the tokens
-# Create a document term matrix using TFIDF weighting
-stemmmed=PL%>% unnest_tokens(word, token = "words", Texto)%>% anti_join(custom)%>%
-  mutate(word = wordStem(word, language = "italian"))
+TFIDF=DF_SS%>%count(ID, word, sort=T)%>% bind_tf_idf(word, ID, n) #Term Frequency-Inverse Document Frequency) para cada palabra en cada documento
+TFIDF%>%arrange(desc(tf_idf)) #organizar de menor a mayor
 
+comparisons <- TFIDF %>% pairwise_similarity(ID,word , tf_idf) %>%arrange(desc( similarity)) # Calcula la similitud coseno entre los documentos
+comparisons
 
-matrix=stemmmed%>%
-  count( ID, word) %>%
-  cast_dtm(document =ID, term = word,
-           value = n, weighting = tm::weightTfIdf)
+#####
+## 5.Modelización textual
+library("topicmodels")
+library(ggplot2)
+library(forcats)
 
-# Print the matrix details 
-print(matrix )
+# Construcción de la matriz de términos
+matrix1 <- DF_stemmed %>% count(ID, word) %>%
+  cast_dtm(document = ID, term = word, value = n, weighting = tm::weightTf)
 
-###reducir el sparse
-less_sparse_matrix <-
-  removeSparseTerms(matrix, sparse = 0.985)
+# Aplicación del modelo LDA con método Gibbs
+lda <- LDA(matrix1, k = 2, method = 'Gibbs', control = list(seed = 1111, alpha = 0.1)) # Con 2 topicos
+betas <- tidy(lda, matrix = "beta") # probabilidades de los términos (beta) en cada topico
 
-# Print results
-matrix
-less_sparse_matrix
-##clasificación, OJo comabia el weighting
-
-matrix1=stemmmed%>%
-  count( ID, word) %>%
-  cast_dtm(document =ID, term = word,
-           value = n, weighting = tm::weightTf)
-matrix2=PL_NSTOP%>%
-  count( ID, word) %>%
-  cast_dtm(document =ID, term = word,
-           value = n, weighting = tm::weightTf)
-
-library(topicmodels)
-lda <- LDA(matrix2, k = 2, method = 'Gibbs',
-                       control = list(seed = 1111))
-lda
-
-betas <-
-  tidy(lda, matrix = "beta")
-betas
-
-
+# Selección de los términos más importantes para cada topico o tema
 grupo1=betas %>%
   group_by(topic) %>%
-  slice_max(beta, n = 10) %>%
+  slice_max(beta, n = 15) %>% #10 terminos con mayor probabilidad
   arrange(topic, -beta) %>%
-  filter(topic == 1)
+  filter(topic == 1)  # Topico 1
 
 grupo2=betas %>%
   group_by(topic) %>%
-  slice_max(beta, n = 10) %>%
+  slice_max(beta, n = 15) %>%
   arrange(topic, -beta) %>%
-  filter(topic == 2)
+  filter(topic == 2) # Topico 2
 
+#Visualizacion 
+grupo1 %>% 
+  mutate(name = fct_reorder(term, beta)) %>% 
+  ggplot( aes(x=name, y= grupo1$beta)) +
+  geom_bar(stat="identity", fill="#E05D00", alpha=.6, width=.4) +
+  coord_flip() +
+  xlab("Palabras grupo 1") + ylab("Betas") +
+  theme_bw()
 
 grupo2 %>% 
   mutate(name = fct_reorder(term, beta)) %>% 
   ggplot( aes(x=name, y= grupo2$beta)) +
-  geom_bar(stat="identity", fill="Green", alpha=.6, width=.4) +
+  geom_bar(stat="identity", fill="#324DA0", alpha=.6, width=.4) +
   coord_flip() +
-  xlab("Grup 1 of news") + ylab("Betas") +
+  xlab("Palabras grupo 2") + ylab("Betas") +
   theme_bw()
 
+#####
+## 6.Analisis sentimental
 
-grupo1 %>% 
-  mutate(name = fct_reorder(term, beta)) %>% 
-  ggplot( aes(x=name, y= grupo2$beta)) +
-  geom_bar(stat="identity", fill="Blue", alpha=.6, width=.4) +
-  coord_flip() +
-  xlab("Grup 2 of news") + ylab("Betas") +
-  theme_bw()
+library("syuzhet") 
+library(RColorBrewer)
 
-### prueba para 4 grupos
-
-
-# Perform Topic Modeling
-sentence_lda <-
-  LDA(matrix1, k = 3, method = 'Gibbs', control = list(seed = 1111))
-# Extract the beta matrix 
-sentence_betas <- tidy(sentence_lda, matrix = "beta")
-sentence_gamma <- tidy(sentence_lda, matrix = "gamma")
-sentence_gamma %>%  filter(document == 1)
-sentence_gamma %>%  filter(document == 2)
-sentence_gamma %>%  filter(document == 3)
-print(sentence_gamma, n=300)
-# Topic #2
-sentence_betas %>%
-  filter(topic == 1 ) %>%
-  arrange(-beta)
-# Topic #3
-sentence_betas %>%
-  filter(topic == 2) %>%
-  arrange(-beta)
-
-sentence_betas %>%
-  filter(topic == 3) %>%
-  arrange(-beta)
-
-
-#### para evaluar los cortes
-sample_size <-floor(0.90* nrow(matrix1))
-set.seed(1111)
-train_ind <- sample(nrow(matrix1), size = sample_size)
-train <- matrix1[train_ind,]
-test <- matrix1[-train_ind,]
-
-values = c()
-for(i in c(2:35)){  
-  lda_model <- LDA(train, k = i, method = "Gibbs", control = list(iter = 25, seed = 1111))  
-  values <- c(values, perplexity(lda_model, newdata = test))  
-  }
-plot(c(2:35), values, main="Perplexity for Topics",      xlab="Number of Topics", ylab="Perplexity")
-
-
-# Extract the gamma matrix 
-gamma_values <- tidy(lda, matrix = "gamma")
-# Create grouped gamma tibble
-grouped_gammas <- gamma_values %>%
-  group_by(document) %>%
-  arrange(desc(gamma)) %>%
-  slice(1) %>%
-  group_by(topic)
-# Count (tally) by topic
-grouped_gammas %>% 
-  tally(topic, sort=TRUE)
-# Average topic weight for top topic for each sentence
-grouped_gammas %>% 
-  summarize(avg=mean(gamma)) %>%
-  arrange(desc(avg))
-#########
-#aumentar capacidad
-library(parallel)
-library(MASS)
-
-starts <- rep(100, 40)
-fx <- function(nstart) kmeans(Boston, 4, nstart=nstart)
-numCores <- detectCores()
-numCores
-#Análisis sentimental
-sentimientos_df <- get_nrc_sentiment(PL_NSTOP$word, lang="italian")
-head(sentimientos_df,60)
+sentiments <- get_nrc_sentiment(DF_SS$word, lang="italian") # Cargar lexicón NRC en italiano
 get_sentiment_dictionary('nrc', language = "italian")
+
+# Gafica de sentimientos
 brewer.pal(n = 8, name = "Set3")
-
-summary(sentimientos_df)
-
 barplot(
-  colSums(prop.table(sentimientos_df[, 1:8])),
+  colSums(prop.table(sentiments[, 1:8])),
   space = 0.2,
   horiz = FALSE,
   las = 1,
   cex.names = 1.2,
-  col =brewer.pal(n = 8, name = "Dark2"),
+  col =brewer.pal(n = 10, name = "RdYlBu"),
   main = "",
   sub = "",
-  xlab="Emotions", ylab = NULL,
-  names.arg=c("Anger","Anticipation","Disgust","Fear","Joy", "Sadness", "Surprise", "Trust"))
+  xlab="Emociones", ylab = NULL,
+  names.arg=c("Ira", "Anticipación", "Disgusto", "Miedo", "Alegría", "Tristeza", "Sorpresa", "Confianza"))
 
+# Nube de sentimientos
+library(wordcloud)
 
-barplot(colSums(prop.table(sentimientos_df[, 1:8])))
+DF_SS$word[sentiments$trust> 0]
+DF_SS$word[sentiments$anticipation> 0]
+DF_SS$word[sentiments$joy> 0]
+DF_SS$word[sentiments$fear> 0]
 
-PL_NSTOP$word[sentimientos_df$trust> 0]
-PL_NSTOP$word[sentimientos_df$anticipation> 0]
-PL_NSTOP$word[sentimientos_df$joy> 0]
-PL_NSTOP$word[sentimientos_df$fear> 0]
-palabras_tristeza <- PL_NSTOP$word[sentimientos_df$sadness> 0]
-
-palabras_tristeza_orden <- sort(table(unlist(palabras_tristeza)), decreasing = TRUE)
-head(palabras_tristeza_orden, n = 12)
-
-nube_emociones_vector <- c(
-  paste(PL_NSTOP$word[sentimientos_df$trust> 0], collapse = " "),
-  paste(PL_NSTOP$word[sentimientos_df$anticipation > 0], collapse = " "),
-  paste(PL_NSTOP$word[sentimientos_df$sadness > 0], collapse = " "),
-  paste(PL_NSTOP$word[sentimientos_df$fear >0], collapse = " "))
+nube_emociones_vector <- c( 
+  paste(DF_SS$word[sentiments$trust> 0], collapse = " "),
+  paste(DF_SS$word[sentiments$anticipation > 0], collapse = " "),
+  paste(DF_SS$word[sentiments$sadness > 0], collapse = " "),
+  paste(DF_SS$word[sentiments$fear >0], collapse = " ")) # Crea un vector de sentimientos
 
 nube_emociones_vector <- iconv(nube_emociones_vector, "latin1", "UTF-8")
 
@@ -352,38 +209,35 @@ nube_corpus <- Corpus(VectorSource(nube_emociones_vector))
 nube_tdm <- TermDocumentMatrix(nube_corpus)
 nube_tdm <- as.matrix(nube_tdm)
 head(nube_tdm)
-colnames(nube_tdm) <- c('Trust', 'Anticipation', 'Sadness', 'Fear')
+colnames(nube_tdm) <- c('Confianza', 'Anticipación', 'Tristeza', 'Miedo')
 head(nube_tdm)
-set.seed(757) # puede ser cualquier n?mero
+
+set.seed(1234)
+windows(width = 30, height = 30)
 comparison.cloud(nube_tdm, random.order = FALSE,
-                 colors = c("green", "red", "orange", "blue"),
+                 colors = c("orange", "#497E00", "blue", "red"),
                  title.size = 1, max.words = 800, scale = c(1.5, 1), rot.per = 0.45)
-## prueba por noticias
-PL_NSTOP2=PL%>% unnest_tokens(token="sentences", word,Texto)%>% anti_join(custom)
-sentimientos_df2 <- get_nrc_sentiment(PL_NSTOP2$word, lang="italian")
-sentimientos_valencia2 <- (sentimientos_df2$negative *-1) + sentimientos_df2$positive
-length(sentimientos_valencia2)
-simple_plot(sentimientos_valencia2, title = "", legend_pos = "top")
-##
-sentimientos_valencia <- (sentimientos_df$negative *-1) + sentimientos_df$positive
-length(sentimientos_valencia)
+
+######
+## 7.Balance emocional vs. el tiempo narrativo 
+DF <- DF %>% arrange(variable)
+
+Noticias_SS=DF%>% unnest_tokens(token="sentences", word,Texto)%>% anti_join(custom_stopwords) # Tokenizacion por noticias 
+sentiments2 <- get_nrc_sentiment(Noticias_SS$word, lang="italian") #Sentimientos por noticias
+sentimientos_valencia <- (sentiments2$negative *-1) + sentiments2$positive
+
+#Grafico A
+L=rescale_x_2(sentimientos_valencia)
+  plot.ts(L$z)
+  
+  library(zoo)
+  suavizado_ma <- rollmean(L$z, k = 20, fill = NA)
+  
+  plot(L$z,  type = "l", col = "black", main = "")
+  lines(suavizado_ma, col = "red")
+  
+#Grafico B
 simple_plot(sentimientos_valencia, title = "", legend_pos = "top")
-summary(sentimientos_valencia)
-syuzhet_vector <- get_sentiment(PL_NSTOP$word, method="syuzhet")
-syuzhet_vector2 <- get_sentiment(PL_NSTOP$word, method="nrc") 
-library(syuzhet)
-dct_values <- get_dct_transform(
-  syuzhet_vector2, 
-  low_pass_size = 5, 
-  x_reverse_len = 100,
-  scale_vals = F,
-  scale_range = T
-)
-plot(
-  dct_values, 
-  type ="l", 
-  main ="", 
-  xlab = "Tiempo narrativo", 
-  ylab = "Balance Emocional", 
-  col = "green"
-)
+  
+  
+
