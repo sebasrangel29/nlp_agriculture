@@ -231,13 +231,13 @@ sentiments2 <- get_nrc_sentiment(Noticias_SS$word, lang="italian") #Sentimientos
 sentimientos_valencia <- (sentiments2$negative *-1) + sentiments2$positive
 
 #Grafico A
-L=rescale_x_2(sentimientos_valencia)
-  plot.ts(L$z)
+reescala=2*(sentimientos_valencia-min(sentimientos_valencia))/(max(sentimientos_valencia)-min(sentimientos_valencia))-1
+ plot.ts(L)
   
   library(zoo)
-  suavizado_ma <- rollmean(L$z, k = 20, fill = NA)
+  suavizado_ma <- rollmean(L, k = 20, fill = NA)
   
-  plot(L$z,  type = "l", col = "black", main = "")
+  plot(L,  type = "l", col = "black", main = "")
   lines(suavizado_ma, col = "red")
   
 #Grafico B
