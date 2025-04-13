@@ -4,7 +4,7 @@
 #Luisa Fernanda Arenas.
 #####
 ## 1.Lectura y creacion del data frame (DF)
-library(readxl)
+library(readr)
 
 DF<- read_delim("https://raw.githubusercontent.com/sebasrangel29/nlp_agriculture/refs/heads/Articulo_NLP/Agro_periodicos1.csv",
                     delim = ";",
