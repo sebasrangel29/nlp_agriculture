@@ -5,9 +5,12 @@
 #####
 ## 1.Lectura y creacion del data frame (DF)
 library(readxl)
-DF <- read_excel("Direccion", 
-                 col_types = c("text", "text", "date", 
-                               "text", "text", "text"))
+DF<- read_delim("https://raw.githubusercontent.com/sebasrangel29/nlp_agriculture/refs/heads/Articulo_NLP/Agro_periodicos1.csv",
+                    delim = ";",
+                    col_types = cols(
+                      .default = col_character(),
+                      "Fecha de publicación" = col_date(format = "%d/%m/%Y")
+                    ))[,-7]
 
 colnames(DF)=c("Fuente","Título", "Fecha", "Texto",  "Link", "Ecuacion" )
 attach(DF)
